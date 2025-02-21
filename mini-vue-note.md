@@ -633,6 +633,102 @@ export function triggerEffects(dep) { // dep 是一个存储副作用函数的�
 }
 ```
 
+# runtime-core 初始化核心
+
+## Demo
+
+example / helloWorld
+
+index.html
+
+```html
+<div id="root"></div>
+<script src="main.js" type="module"></script>
+```
+
+main.js
+
+```js
+import { createApp } from "../../dist/mini-vue.esm-bundler.js";
+import App from "./App.js";
+
+const rootContainer = document.querySelector("#root");//获取根标签节点
+createApp(App).mount(rootContainer); //createApp(传入根组件).mount(传入根容器)
+```
+
+App.js
+
+```js
+export default {//一个对象
+    name: "App",//标记当前组件的名字
+    setup(props,context) {},//一个在组件创建之前执行的函数，可使用响应式数据、生命周期钩子、计算属性等
+
+    render() {//把template转化成render函数，代表这个组件想要渲染出来的视图
+        //tag标签名(div)  props属性对象  children数据包含了(div 元素的子节点)
+        return h("div", { tId: 1 }, [h("p", {}, "主页"), h(HelloWorld)]);
+    },
+};
+```
+
+## 渲染流程详解
+
+### mount 初始化流程
+
+> ![138114565-3e0eecbb-7fd0-4203-bf36-5e5fd8003ce0](C:\Users\DELL\Desktop\138114565-3e0eecbb-7fd0-4203-bf36-5e5fd8003ce0.png)
+>
+> 先进入main.js---获取到根容器---触发createApp函数---调用createApp内部App对象的mount函数---mount内部基于传来的根容器生成虚拟节点vnode(一个普通对象但有几个关键的key，最关键的是有type对象[和传入的对象是一样的name|setup|render])
+>
+> 调用mount内部的render---调用内部patch方法---解构出type对象---switch判断type的类型从而用不同的方法处理
+>
+> >**component** 组件类型---调用processComponent---根据!n1分成初始化or更新
+> >
+> >>**mountComponent** 初始化---模板初始化对象+把vnode虚拟节点挂在到该对象上---***setupComponent***---initProps+initSlots+setupStatefulComponent初始化props/slots/setup&处理组件---在setupStatefulComponent创建一个代理对象[还是那个传来的type对象]将其绑定到instance对象上---传入instance触发setcurrentinstance---handlesetupResult基于setup中的props和context做出一定的处理---1.setup返回一个函数[会把它当成render函数去写] 2.setup返回一个对象[赋值,调用finishComponentSetup,如果没有render会将Component的render赋值给它]
+> >>
+> >>往回走走到***setupComponent***，instance.update使用effect调用componentUpdateFn---该函数中要调用传来对象里的render函数获取vnode子组件生成好的虚拟节点---在componentUpdateFn触发***patch***(递归回去了)【!此时已经变成**element**元素类型了!】
+> >
+> >>**updateComponent** 更新
+>
+> >**element** 元素类型---调用processElement---根据!n1分成初始化or更新
+> >
+> >>**mountElement** 初始化(把虚拟节点转化成一个真实的dom元素)---创建el(真实的element)---[文本类型调用hostcreateElement]---[数组类型调用mountChildren]传入childer节点,el---遍历数组触发***patch***(递归)【!此时数组元素就是**element**类型!】
+> >>
+> >>仍然位于mountElement函数中,如果元素props存在,遍历调用**hostPatchProp**(传入el,key,null,val)---分类,内部处理还是调用了dom内部的API
+> >>
+> >>返回mountElement函数,下一步调用**hostInsert**(el,container[根组件])[将所有的一切插回#root根元素组件]到此所有元素就都在页面上展示出来了，也就是初始化的全过程
+> >
+> >>**updateElement** 更新
+
+> 通俗来说：***调用render就是“拆箱”的过程***直到把内部所有的组件渲染到浏览器上
+
+### update 更新流程
+
+App.js 样例变动
+
+```js
+export default {//一个对象
+    name: "App",//标记当前组件的名字
+    setup(props,context) {//一个在组件创建之前执行的函数，可使用响应式数据、生命周期钩子、计算属性等
+        const count = ref(10)
+        window.count = count
+        
+        return{
+            count,
+        };
+    },
+
+    render() {//把template转化成render函数，代表这个组件想要渲染出来的视图
+        //tag标签名(div)  props属性对象  children数据包含了(div 元素的子节点)
+        return h("div", { tId: 1 }, [h("p", {}, "主页" + this.count)]);
+    },
+};
+```
+
+> ![138115157-1f4fb8a2-7e60-412d-96de-12e68eb0288c](C:\Users\DELL\Desktop\138115157-1f4fb8a2-7e60-412d-96de-12e68eb0288c.png)
+>
+> 响应式的值发生改变(响应式对象都在render函数内)---执行用户传入的fn---判断是否初始化---触发当前组件的effect函数执行(instance,update)---调用render函数(获取前后虚拟节点树节点)---触发***patch***(前后虚拟节点树节点)---根据!n2分成**component**组件类型or**element**元素类型
+>
+> 更新逻辑：***processXXX***中n1存在---进入***updateXXX***(n1,n2)---取出新(n1&n2)老(n2&{})props---n2.el=n1.el---对比props(patchProps)---对比children(patchChild)双端对比算法实现
+
 # 逐步搭建
 
 ## 初始化项目+搭建环境
