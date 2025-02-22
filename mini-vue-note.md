@@ -796,3 +796,564 @@ it('index', () => {
 pnpm test
 ```
 
+
+
+## runtime-reactivity 响应式系统实现
+
+### 编写单测
+
+#### effect
+
+reactivity / texts / effect.spec.ts
+
+```ts
+import { effect } from '../effect'
+import { reactive } from '../reactive'
+
+describe('effect', () => {
+	it.skip('effect', () => {
+		const user = reactive({// 响应式对象
+			age: 10,
+		})
+
+		let nextAge
+		effect(() => {//收集依赖 接收fn 触发get操作
+			nextAge = user.age + 1
+		})
+
+		expect(nextAge).toBe(11)
+
+		// update 触发set操作
+		user.age++
+		expect(nextAge).toBe(12)
+	})
+})
+```
+
+#### reactive
+
+reactivity / texts / reactive.spec.ts
+
+```ts
+import { reactive } from '../reactive'
+
+describe('reactive', () => {
+    it('reactive', () => {
+        const original = { age: 1 }
+        const observed = reactive(original)
+        expect(observed).not.toBe(original)
+        expect(observed.age).toBe(1)
+    })
+})
+```
+
+
+
+### 实现reactive
+
+tsconfig.json
+
+```json
+"lib": ["DOM","ES6"], 
+```
+
+reactivity / reactive.ts
+
+> 传入一个对象，返回一个Proxy对象，实现 get & set 函数
+>
+> > 详解 假设对象为 { foo : 1 }
+> >
+> > ```ts
+> > target: { foo : 1 }
+> > key: foo
+> > value: 1
+> > ```
+
+```ts
+export function reactive(raw) {
+    return new Proxy(raw, {
+        get(target, key) {
+            const res = Reflect.get(target, key)
+
+            // TODO:收集依赖
+
+            return res
+        },
+        
+        set(target, key, value) {
+            const res = Reflect.set(target, key, value)
+            
+            // TODO:触发依赖
+
+            return res
+        }
+    })
+}
+```
+
+> 测试 pnpm test reactive
+
+### 实现effect
+
+reactivity / effect.ts
+
+> 传入一个副作用函数fn，响应式数据发生变化时，重新执行fn
+>
+> > 封装类，将 `_fn` 私有属性和 `run` 方法封装在一起，外部代码只能通过 `run` 方法来执行 `_fn`，隐藏内部实现细节，提高代码的安全性和可维护性
+> >
+> > ```ts
+> > class ReactiveEffect {
+> >     private _fn: any
+> > 	constructor(fn) {
+> > 		this._fn = fn
+> > 	}
+> > 	run() {
+> > 		this._fn()
+> > 	}
+> > }
+> > ```
+
+```ts
+export function effect(fn) {
+	const _effect = new ReactiveEffect(fn)
+
+	_effect.run()
+}
+```
+
+> 测试 pnpm test effect
+
+### 实现reactive-get
+
+```ts
+get(target, key) {
+    const res = Reflect.get(target, key)
+
+    track(target, key) //传入对象和key
+
+    return res
+},
+```
+
+#### track 依赖收集
+
+reactivity / effect.ts
+
+> 构建一个容器，存储依赖
+>
+> ```ts
+> const targetMap = new Map() // 存储依赖关系
+> ```
+
+```ts
+const targetMap = new Map() // 存所有依赖
+export function track(target, key) {
+	let depsMap = targetMap.get(target)
+	if (!depsMap) {
+		depsMap = new Map()
+		targetMap.set(target, depsMap)//targetMap结构[target<obj>, depsMap<map>]
+	}
+
+	let dep = depsMap.get(key)
+	if (!dep) {
+		dep = new Set()
+		depsMap.set(key, dep)//depsMap结构[key<key>, dep<ReactiveEffect>]
+	}
+
+	dep.add(？)
+}
+```
+
+如何拿到fn
+
+```ts
+//全局对象
+let activeEffect
+
+//ReactiveEffect类内
+run() {
+    activeEffect = this
+    this._fn()
+}
+
+//传入effect
+dep.add(activeEffect)
+```
+
+### 实现reactive-set
+
+```ts
+set(target, key, value) {
+    const res = Reflect.set(target, key, value)
+
+    trigger(target, key) //传入对象和key
+    
+    return res
+}
+```
+
+#### trigger 依赖触发
+
+reactivity / effect.ts
+
+```ts
+export function trigger(target, key) {
+	let depsMap = targetMap.get(target)
+	if (!depsMap) {
+		return
+	}
+
+	let dep = depsMap.get(key)
+	if (!dep) {
+		return
+	}
+
+	dep.forEach((effect) => {
+        effect.run()
+    })
+}
+```
+
+> 测试 pnpm test effect
+
+### 完善effect功能
+
+#### 功能单测1
+
+reactivity / texts / effect.spec.ts
+
+```ts
+it('返回runner可以触发effect', () => {
+    let foo = 10
+    const runner = effect(() => {
+        foo++
+        return foo
+    })
+
+    expect(foo).toBe(11)//创建effect - foo++
+    const r = runner()//调用runner - foo++
+    expect(foo).toBe(12)
+    expect(r).toBe(foo)//调用runner - foo++
+})
+```
+
+修改effect逻辑
+
+*实现创建实例时run一次*
+
+```ts
+export function effect(fn) {
+	const _effect = new ReactiveEffect(fn)
+
+	_effect.run() //先执行一次
+
+    return _effect.run.bind(_effect)//返回run函数并绑定this
+}
+```
+
+```ts
+run() {
+    activeEffect = this
+    return this._fn()//返回值
+}
+```
+
+> Tips：有关 ***.bind(...)***
+>
+> 直接返回 `_effect.run` 会让 `run` 方法在调用时 `this` 指向出现问题，可能导致 `this._fn()` 无法正常执行。
+>
+> *例子*
+>
+> ```ts
+> class ReactiveEffect {
+>     private _fn: any;
+>     constructor(fn) {
+>         this._fn = fn;
+>     }
+>     run() {
+>         console.log('this:', this);
+>         this._fn();
+>     }
+> }
+> 
+> function effectWithBind(fn) {// 返回 _effect.run.bind(_effect)
+>     const _effect = new ReactiveEffect(fn);
+>     _effect.run();
+>     return _effect.run.bind(_effect);
+> }
+> 
+> function effectWithoutBind(fn) {// 返回 _effect.run
+>     const _effect = new ReactiveEffect(fn);
+>     _effect.run();
+>     return _effect.run;
+> }
+> 
+> const boundRun = effectWithBind(f);// 使用 effectWithBind
+> boundRun(); // this 指向 _effect 实例
+> 
+> const unboundRun = effectWithoutBind(f);// 使用 effectWithoutBind
+> unboundRun(); // this 指向全局对象（在浏览器中是 window）
+> ```
+
+> 测试 pnpm test effect
+
+#### 功能单测2
+
+reactivity / texts / effect.spec.ts
+
+```ts
+it.skip("scheduler", () => {
+    // 1. 通过 effect 的第二个参数给定一个 scheduler 的 fn
+    // 2. effect 第一次执行的时候 还会执行 fn
+    // 3. 当 响应式对象 set update 不会执行 fn 而是执行 scheduler
+    // 4. 如果说当执行 runner 的时候 会再次执行 fn
+    let dummy
+    let run: any
+    const scheduler = jest.fn(() => {
+        run = runner
+    })
+    const obj = reactive({ foo: 1 })
+    const runner = effect(() => 
+		{ dummy = obj.foo },
+		{ scheduler }
+    )
+
+    expect(scheduler).not.toHaveBeenCalled()//scheduler不会被调用
+    expect(dummy).toBe(1)
+
+    //当响应式对象set时调用scheduler,但不会执行fn
+    obj.foo++
+    expect(scheduler).toHaveBeenCalledTimes(1)
+    expect(dummy).toBe(1)
+
+    //调用runner时执行fn
+    run()
+    expect(dummy).toBe(2)
+})
+```
+
+更新effect函数
+
+```ts
+constructor(fn, public scheduler?) {//拿到可选参数scheduler
+    this._fn = fn
+}
+
+export function effect(fn, options: any = {}) {
+    const scheduler = options.scheduler//拿到scheduler
+    const _effect = new ReactiveEffect(fn, scheduler)//给类传入scheduler
+
+    _effect.run()
+    return _effect.run.bind(_effect)
+}
+```
+
+修改更新函数trigger逻辑
+
+```ts
+dep.forEach((effect) => {
+    if (effect.scheduler) {
+        effect.scheduler()
+        return
+    } else {
+        effect.run()
+    }
+    effect.run()
+})
+```
+
+> pnpm test effect
+
+#### 功能单测3
+
+reactivity / texts / effect.spec.ts
+
+```ts
+it("stop的执行逻辑", () => {
+    let dummy
+    const obj = reactive({ prop: 1 })
+    const runner = effect(() => {
+        dummy = obj.prop
+    })
+    obj.prop = 2
+    expect(dummy).toBe(2)
+
+    stop(runner)//停止执行runner
+
+    obj.prop = 3
+    expect(dummy).toBe(2)
+
+    runner()
+    expect(dummy).toBe(3)
+})
+```
+
+reactivity / effect.ts
+
+实现stop代码
+
+```ts
+export function stop(runner) {
+	runner.effect.stop()
+}
+```
+
+修改effect函数
+
+```ts
+export function effect(fn, options: any = {}) {
+    const scheduler = options.scheduler
+    const _effect = new ReactiveEffect(fn, scheduler)
+    
+    _effect.run()
+    
+    const runner: any = _effect.run.bind(_effect) //定义runner函数并绑定this
+    runner.effect = _effect //将effect挂载到runner上
+
+    return runner
+}
+```
+
+track函数添加逻辑
+
+```ts
+dep.add(activeEffect)
+activeEffect.deps.push(dep)
+```
+
+修改effect类 | 添加stop函数
+
+```ts
+public deps = []
+
+stop() {
+    this.deps.forEach((dep:any) => {
+        dep.delete(this)
+    })
+}
+```
+
+> pnpm test effect --watch
+
+代码优化（抽离清除逻辑 & 防抖）
+
+```ts
+active = true
+
+stop() {
+    if (this.active) {
+        cleanupEffect(this)	
+        this.active = false
+    }
+}
+
+function cleanupEffect(effect) {
+    effect.deps.forEach((dep: any) => {
+        dep.delete(effect)
+    })
+}
+```
+
+#### 功能单测4
+
+reactivity / texts / effect.spec.ts
+
+```ts
+it('onStop的执行逻辑', () => {
+    const obj = reactive({
+        foo: 1,
+    })
+    const onStop = jest.fn()//jest.fn() 创建一个模拟函数 onStop，用于记录其调用次数和参数
+    let dummy
+    const runner = effect(
+        () => {
+            dummy = obj.foo//响应式对象
+        },
+        {
+            onStop,//选项对象
+        }
+    )
+    stop(runner)
+    expect(onStop).toBeCalledTimes(1)//验证 onStop 函数是否被调用了一次
+})
+```
+
+reactivity / effect.ts
+
+```ts
+//_effect.onStop = options.onStop//调用类方法
+//Object.assign(_effect, options)//调用类方法(优化)
+extend(_effect, options)//调用类方法(抽离封装)
+```
+
+> Tip：二者区别
+>
+> ```ts
+> // 假设 options 对象如下
+> const options = {
+>     onStop: () => console.log('Effect stopped'),
+>     someOtherOption: 'value'
+> };
+> const _effect = new ReactiveEffect(() => {});
+> ```
+>
+> ```ts
+> // 仅赋值 onStop 属性
+> _effect.onStop = options.onStop;
+> 
+> console.log(_effect.onStop); // 输出: () => console.log('Effect stopped')
+> console.log(_effect.someOtherOption); // 输出: undefined
+> ```
+>
+> ```ts
+> // 复制 options 对象的所有属性到 _effect
+> Object.assign(_effect, options);
+> 
+> console.log(_effect.onStop); // 输出: () => console.log('Effect stopped')
+> console.log(_effect.someOtherOption); // 输出: 'value'
+> ```
+
+继续抽离函数
+
+src / shared (放置通用的工具函数) / index.ts
+
+```ts
+export const extend = Object.assign
+```
+
+修改类
+
+```ts
+onStop?: () => void
+
+stop() {
+    if (this.active) {
+        cleanupEffect(this)
+        if (this.onStop) {
+            this.onStop()	
+        }
+        this.active = false
+    }
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
