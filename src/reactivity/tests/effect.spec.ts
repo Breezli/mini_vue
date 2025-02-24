@@ -78,10 +78,11 @@ describe('effect函数实现', () => {
 		stop(runner) //停止执行runner
 
 		obj.prop = 3
+		obj.prop++
 		expect(dummy).toBe(2)
 
 		runner() //调用runner继续执行
-		expect(dummy).toBe(3)
+		expect(dummy).toBe(4)
 	})
 
 	it('onStop的执行逻辑', () => {

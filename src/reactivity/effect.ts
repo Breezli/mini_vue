@@ -1,16 +1,32 @@
 import { extend } from '../shared'
 
+let activeEffect //当前激活的effect
+let shouldTrack //是否应该收集依赖
+
 class ReactiveEffect {
 	private _fn: any
-	public deps = []
+	public deps = [] //存储依赖
 	active = true
 	onStop?: () => void
-	constructor(fn, public scheduler?) {
+	public scheduler?: Function | undefined
+	constructor(fn, scheduler?: Function) {
 		this._fn = fn
+		this.scheduler = scheduler
 	}
 	run() {
+		if (!this.active) {
+			//stop状态直接返回fn
+			return this._fn()
+		}
+
+		shouldTrack = true
 		activeEffect = this
-		return this._fn()
+
+		const res = this._fn()
+
+		shouldTrack = false
+
+		return res
 	}
 	stop() {
 		if (this.active) {
@@ -27,10 +43,16 @@ function cleanupEffect(effect) {
 	effect.deps.forEach((dep: any) => {
 		dep.delete(effect)
 	})
+	effect.deps.length = 0
 }
 
 const targetMap = new Map() //存储依赖关系
 export function track(target, key) {
+	if (!activeEffect || !shouldTrack) {
+		//如果没有激活的effect或者shouldTrack为false，直接返回
+		return
+	}
+
 	let depsMap = targetMap.get(target)
 	if (!depsMap) {
 		depsMap = new Map()
@@ -43,6 +65,13 @@ export function track(target, key) {
 		depsMap.set(key, dep)
 	}
 
+	trackEffects(dep)
+}
+
+export function trackEffects(dep) {
+	if (dep.has(activeEffect)) {
+		return
+	}
 	dep.add(activeEffect)
 	activeEffect.deps.push(dep)
 }
@@ -69,7 +98,6 @@ export function trigger(target, key) {
 	})
 }
 
-let activeEffect
 export function effect(fn, options: any = {}) {
 	const _effect = new ReactiveEffect(fn, options.scheduler)
 	extend(_effect, options)

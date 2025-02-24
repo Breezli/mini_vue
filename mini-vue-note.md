@@ -152,18 +152,18 @@ function createReactiveObject(target, proxyMap, baseHandlers) {//原理是JS创�
 > 
 > // 创建一个 Proxy 对象
 > const reactiveObj = new Proxy(target, {
->   get(target, key, receiver) {
->     console.log(`Getting ${key}`);
->     return Reflect.get(target, key, receiver);
->   },
->   set(target, key, value, receiver) {
->     console.log(`Setting ${key} to ${value}`);
->     const result = Reflect.set(target, key, value, receiver);
->     if (result) {
->       console.log("Trigger updates...");
->     }
->     return result;
->   }
+> get(target, key, receiver) {
+>  console.log(`Getting ${key}`);
+>  return Reflect.get(target, key, receiver);
+> },
+> set(target, key, value, receiver) {
+>  console.log(`Setting ${key} to ${value}`);
+>  const result = Reflect.set(target, key, value, receiver);
+>  if (result) {
+>    console.log("Trigger updates...");
+>  }
+>  return result;
+> }
 > });
 > 
 > // 测试
@@ -186,7 +186,7 @@ function createReactiveObject(target, proxyMap, baseHandlers) {//原理是JS创�
 > 
 > // effect函数
 > effect(() => {
->   console.log(`Count is ${state.count}`);
+> console.log(`Count is ${state.count}`);
 > });
 > 
 > // 修改状态
@@ -199,7 +199,7 @@ function createReactiveObject(target, proxyMap, baseHandlers) {//原理是JS创�
 > ```ts
 > // 创建一个 effect 并获取停止函数
 > const stop = effect(() => {
->   console.log(`Count is ${state.count}`);
+> console.log(`Count is ${state.count}`);
 > });
 > 
 > // 修改状态
@@ -683,7 +683,7 @@ export default {//一个对象
 > >**component** 组件类型---调用processComponent---根据!n1分成初始化or更新
 > >
 > >>**mountComponent** 初始化---模板初始化对象+把vnode虚拟节点挂在到该对象上---***setupComponent***---initProps+initSlots+setupStatefulComponent初始化props/slots/setup&处理组件---在setupStatefulComponent创建一个代理对象[还是那个传来的type对象]将其绑定到instance对象上---传入instance触发setcurrentinstance---handlesetupResult基于setup中的props和context做出一定的处理---1.setup返回一个函数[会把它当成render函数去写] 2.setup返回一个对象[赋值,调用finishComponentSetup,如果没有render会将Component的render赋值给它]
-> >>
+> >
 > >>往回走走到***setupComponent***，instance.update使用effect调用componentUpdateFn---该函数中要调用传来对象里的render函数获取vnode子组件生成好的虚拟节点---在componentUpdateFn触发***patch***(递归回去了)【!此时已经变成**element**元素类型了!】
 > >
 > >>**updateComponent** 更新
@@ -691,9 +691,9 @@ export default {//一个对象
 > >**element** 元素类型---调用processElement---根据!n1分成初始化or更新
 > >
 > >>**mountElement** 初始化(把虚拟节点转化成一个真实的dom元素)---创建el(真实的element)---[文本类型调用hostcreateElement]---[数组类型调用mountChildren]传入childer节点,el---遍历数组触发***patch***(递归)【!此时数组元素就是**element**类型!】
-> >>
+> >
 > >>仍然位于mountElement函数中,如果元素props存在,遍历调用**hostPatchProp**(传入el,key,null,val)---分类,内部处理还是调用了dom内部的API
-> >>
+> >
 > >>返回mountElement函数,下一步调用**hostInsert**(el,container[根组件])[将所有的一切插回#root根元素组件]到此所有元素就都在页面上展示出来了，也就是初始化的全过程
 > >
 > >>**updateElement** 更新
@@ -903,7 +903,7 @@ reactivity / effect.ts
 > >
 > > ```ts
 > > class ReactiveEffect {
-> >     private _fn: any
+> >  private _fn: any
 > > 	constructor(fn) {
 > > 		this._fn = fn
 > > 	}
@@ -1066,26 +1066,26 @@ run() {
 >
 > ```ts
 > class ReactiveEffect {
->     private _fn: any;
->     constructor(fn) {
->         this._fn = fn;
->     }
->     run() {
->         console.log('this:', this);
->         this._fn();
->     }
+>  private _fn: any;
+>  constructor(fn) {
+>      this._fn = fn;
+>  }
+>  run() {
+>      console.log('this:', this);
+>      this._fn();
+>  }
 > }
 > 
 > function effectWithBind(fn) {// 返回 _effect.run.bind(_effect)
->     const _effect = new ReactiveEffect(fn);
->     _effect.run();
->     return _effect.run.bind(_effect);
+>  const _effect = new ReactiveEffect(fn);
+>  _effect.run();
+>  return _effect.run.bind(_effect);
 > }
 > 
 > function effectWithoutBind(fn) {// 返回 _effect.run
->     const _effect = new ReactiveEffect(fn);
->     _effect.run();
->     return _effect.run;
+>  const _effect = new ReactiveEffect(fn);
+>  _effect.run();
+>  return _effect.run;
 > }
 > 
 > const boundRun = effectWithBind(f);// 使用 effectWithBind
@@ -1214,7 +1214,7 @@ export function effect(fn, options: any = {}) {
 }
 ```
 
-track函数添加逻辑
+track（依赖收集）函数添加逻辑
 
 ```ts
 dep.add(activeEffect)
@@ -1291,8 +1291,8 @@ extend(_effect, options)//调用类方法(抽离封装)
 > ```ts
 > // 假设 options 对象如下
 > const options = {
->     onStop: () => console.log('Effect stopped'),
->     someOtherOption: 'value'
+>  onStop: () => console.log('Effect stopped'),
+>  someOtherOption: 'value'
 > };
 > const _effect = new ReactiveEffect(() => {});
 > ```
@@ -1336,6 +1336,632 @@ stop() {
     }
 }
 ```
+
+### 实现readonly功能
+
+#### 编写单测
+
+readonly.spec.ts
+
+> 只读属性只能读取set不能被改写set
+
+```ts
+import { readonly } from '../reactive'
+
+describe('readonly', () => {
+	it('readonly', () => {
+		const original = { foo: 1 }
+		const wrapped = readonly(original)
+		expect(wrapped).not.toBe(original) //返回一个新对象，而非返回原对象
+		expect(wrapped.foo).toBe(1)
+	})
+
+	it('warning when call set', () => {
+		console.warn = jest.fn()
+		const user = readonly({
+			age: 10,
+		})
+		user.age = 11
+		expect(console.warn).toBeCalled()//调用了console.warn
+	})
+})
+```
+
+reactive
+
+```ts
+export function readonly(raw) {
+    return new Proxy(raw, {
+        get(target, key) {
+            return Reflect.get(target, key)
+        },
+        set(target, key, value) {
+            console.warn(`key: ${key} set 失败，因为 target 是 readonly 的`, target)
+            return true
+        }
+    }) 
+}
+```
+
+抽离 get & set 函数
+
+createGetter
+
+```ts
+function createGetter(isReadonly = false, shallow = false) {
+    return function get(target, key) {//返回一个get函数
+        const res = Reflect.get(target, key)
+        if (!isReadonly) {
+            track(target, key)
+        }
+        if (shallow) {
+            return res
+        }
+        if (typeof res === 'object') {
+            return isReadonly ? readonly(res) : reactive(res)
+        }
+        return res
+    }
+}
+```
+
+createSetter
+
+```ts
+function createSetter(shallow = false) {
+	return function set(target, key, value) {
+		const res = Reflect.set(target, key, value)
+		trigger(target, key)
+		return res
+	}
+}
+```
+
+改写函数
+
+```ts
+export function reactive(raw) {
+	return new Proxy(raw, {
+		get: createGetter(),
+		set: createSetter(),
+	})
+}
+
+export function readonly(raw) {
+	return new Proxy(raw, {
+		get: createGetter(true),
+		set(target, key, value) {
+			console.warn(`key: ${key} set 失败，因为 target 是 readonly 的`, target)
+			return true
+		},
+	})
+}
+```
+
+继续优化抽离组件
+
+创建 baseHanders.ts | 封装get逻辑
+
+```ts
+import { track, trigger } from './effect'
+
+function createGetter(isReadonly = false) {
+	return function get(target, key) {
+		const res = Reflect.get(target, key)
+		if (!isReadonly) {
+			track(target, key)
+		}
+		return res
+	}
+}
+
+function createSetter() {
+	return function set(target, key, value) {
+		const res = Reflect.set(target, key, value)
+		trigger(target, key)
+		return res
+	}
+}
+
+export const reactiveHandlers = {
+	get: createGetter(),
+	set: createSetter(),
+}
+
+export const readonlyHandlers = {
+	get: createGetter(true),
+	set(target, key, value) {
+		console.warn(`key: ${key} set 失败，因为 target 是 readonly 的`, target)
+		return true
+	},
+}
+```
+
+重构 reactive & readonly
+
+```ts
+import { reactiveHandlers, readonlyHandlers } from './baseHanders'
+
+function createActiveEffect(raw: any, baseHanders) {
+	return new Proxy(raw, baseHanders)
+}
+
+export function reactive(raw) {
+	return createActiveEffect(raw, reactiveHandlers)
+}
+
+export function readonly(raw) {
+	return createActiveEffect(raw, readonlyHandlers)
+}
+```
+
+为 createGetter 添加缓存机制
+
+```ts
+const get = createGetter()
+const set = createSetter()
+const readonlyGet = createGetter(true)
+```
+
+> pnpm test readonly --watch
+
+### 实现 isReactive & isReadonly 功能
+
+#### 编写单测
+
+reactive.spec.ts
+
+> 判断传入的 `value` 是否为响应式对象
+
+```ts
+it('reactive', () => {
+    const original = { age: 1 }
+    const observed = reactive(original)
+    expect(observed).not.toBe(original)
+    expect(observed.age).toBe(1)
+
+    //判断是否是响应式对象
+    expect(isReactive(observed)).toBe(true)
+    expect(isReactive(original)).toBe(false)
+})
+```
+
+readonly.spec.ts
+
+> 判断是否是只读对象
+
+```ts
+it('readonly', () => {
+    const original = { foo: 1 }
+    const wrapped = readonly(original)
+    expect(wrapped).not.toBe(original) //返回一个新对象，而非返回原对象
+    expect(wrapped.foo).toBe(1)
+
+    expect(isReadonly(wrapped)).toBe(true)//判断是否是只读对象
+})
+```
+
+#### 功能实现
+
+createGetter拦截判断
+
+```ts
+function createGetter(isReadonly = false) {
+	return function get(target, key) {
+
+		if (key === ReactiveFlags.IS_REACTIVE) {//判断是否是响应式对象
+			return !isReadonly
+		}else if (key === ReactiveFlags.IS_READONLY) {//判断是否是只读对象
+			return isReadonly
+		}
+
+		const res = Reflect.get(target, key)
+		if (!isReadonly) {
+			track(target, key)
+		}
+		return res
+	}
+}
+```
+
+reactive.ts
+
+```ts
+export const enum ReactiveFlags {
+	IS_REACTIVE = '__v_isReactive',
+	IS_READONLY = '__v_isReadonly',
+}
+
+export function isReactive(value) {//判断是否是响应式对象
+    return !!value[ReactiveFlags.IS_REACTIVE]
+}
+export function isReadonly(value) {//判断是否是只读对象
+    return !!value[ReactiveFlags.IS_READONLY]
+}
+```
+
+> pnpm test readonly --watch
+>
+> pnpm test reactive --watch
+
+### stop功能优化
+
+#### 当前bug
+
+```ts
+it("stop的执行逻辑", () => {
+    let dummy
+    const obj = reactive({ prop: 1 })
+    const runner = effect(() => {
+        dummy = obj.prop
+    })
+    obj.prop = 2
+    expect(dummy).toBe(2)
+
+    stop(runner)//停止执行runner
+
+    // obj.prop = 3 只涉及set操作
+    obj.prop++ //触发 get+set
+    
+    expect(dummy).toBe(2)
+
+    runner()
+    expect(dummy).toBe(3)
+})
+```
+
+> stop(runner)会根据该响应式对象中active的状态清除它的已经收集的所有依赖
+>
+> ```ts
+> effect.deps.forEach((dep: any) => {
+>     dep.delete(effect)
+> })
+> ```
+>
+> +1触发get操作一定会触发track操作重新收集依赖 
+>
+> ```ts
+> dep.add(activeEffect)//之前的依赖都白清了
+> ```
+>
+> 所以stop函数之后的操作不应该收集依赖（不能触发track操作）
+
+#### 代码实现
+
+track添加逻辑
+
+```ts
+if(!activeEffect || !shouldTrack){//如果没有激活的effect或者shouldTrack为false，直接返回
+    return	
+}
+
+//...收集依赖
+
+if (dep.has(activeEffect)) {
+    return
+}
+dep.add(activeEffect)
+activeEffect.deps.push(dep)
+```
+
+修改run函数（stop根据active状态区分）
+
+```ts
+run() {
+    if (!this.active) { // stop状态直接返回fn
+        return this._fn()
+    }
+
+    shouldTrack = true // 允许进行依赖收集
+    activeEffect = this
+
+    const res = this._fn() // this._fn() 执行，期间访问响应式对象的属性，触发track依赖收集
+
+    shouldTrack = false // 依赖收集结束，后续操作不会再触发依赖收集。
+
+    return res
+}
+```
+
+cleanupEffect添加逻辑
+
+```ts
+effect.deps.length = 0
+```
+
+> pnpm test reactive --watch
+
+### 嵌套响应式转换
+
+#### 编写单测
+
+reactive
+
+```ts
+it('嵌套响应式对象转换', () => {
+    const original = {
+        nested: {
+            foo: 1
+        },
+        array: [{ bar: 2 }]
+    }
+    const observed = reactive(original)
+    expect(isReactive(observed.nested)).toBe(true)
+    expect(isReactive(observed.array)).toBe(true)
+    expect(isReactive(observed.array[0])).toBe(true) 
+})
+```
+
+readonly
+
+```ts
+it('readonly', () => {
+    const original = { foo: 1, bar: { baz: 2 } }
+    const wrapped = readonly(original)
+
+    expect(wrapped).not.toBe(original) //返回一个新对象，而非返回原对象
+    expect(wrapped.foo).toBe(1)
+
+    expect(isReadonly(original)).toBe(false)
+    expect(isReadonly(original.bar)).toBe(false)
+    expect(isReadonly(wrapped)).toBe(true)//只读
+    expect(isReadonly(wrapped.bar)).toBe(true)//只读
+})
+```
+
+baseHanders.ts 递归拦截
+
+> createGetter函数
+>
+> const res = Reflect.get(*target*, *key*)后添加判断
+
+```ts
+if (isObject(res)) {//判断是否是对象
+    return isReadonly ? readonly(res) : reactive(res)//返回只读对象或者响应式对象
+}
+```
+
+shared / index.ts
+
+```ts
+export const isObject = (val) => {
+	return val !== null && typeof val === 'object'
+}
+```
+
+### shallowReadonly工具函数
+
+#### 编写单测
+
+shallowReadonly.spec.ts
+
+> 数据展示:确保外层数据不会被意外修改，同时允许在必要时修改嵌套对象
+>
+> 性能优化:避免对所有嵌套对象进行只读处理
+
+```ts
+import { isReadonly, shallowReadonly } from '../reactive'
+
+describe('shallowReadonly', () => {
+    it('shallowReadonly', () => {
+        const props = shallowReadonly({ n: { foo: 1 } })
+        expect(isReadonly(props)).toBe(true)//表层只读
+        expect(isReadonly(props.n)).toBe(false)//内部正常
+    })
+})
+```
+
+#### 功能实现
+
+reactive.ts
+
+```ts
+export function shallowReadonly(raw) {
+    return createActiveEffect(raw, shallowReadonlyHandlers)
+}
+```
+
+baseHanders.ts
+
+```ts
+const readonlyGet = createGetter(true)
+const shallowReadonlyGet = createGetter(true, true)
+```
+
+createGetter改写
+
+```ts
+function createGetter(isReadonly = false, shallow = false)
+
+if (shallow) {
+    return res	
+}
+//👇判断isObject前拦截👆//
+if (isObject(res)) {//判断是否是对象
+    return isReadonly ? readonly(res) : reactive(res) //返回只读对象或者响应式对象
+}
+```
+
+继承改写自readonlyHandlers
+
+```ts
+export const shallowReadonlyHandlers = extend({}, readonlyHandlers, {
+    get: shallowReadonlyGet,
+})
+```
+
+### 实现isProxy功能
+
+#### 编写单测
+
+> 判断是否是代理对象
+
+reactive & readonly 分别添加
+
+```ts
+expect(isProxy(observed)).toBe(true)
+```
+
+```ts
+expect(isProxy(wrapped)).toBe(true)
+```
+
+#### 功能实现
+
+```ts
+export function isProxy(value) { //判断是否是代理对象
+	return isReactive(value) || isReadonly(value)	
+}
+```
+
+### 实现ref
+
+#### 必看：`ref`与`reactive`区别
+
+| **reactive**                                | **ref**                                                      |
+| ------------------------------------------- | ------------------------------------------------------------ |
+| ❌只支持**对象**和**数组**(引用数据类型)     | ✅支持基本数据类型+引用数据类型                               |
+| ❌重新分配一个新对象会丢失响应性             | ✅重新分配一个新对象**不会**失去响应                          |
+| ❌重新分配一个新对象会丢失响应性             | ✅传入函数时,不会失去响应                                     |
+| 能直接访问属性                              | 需要使用 `.value` 访问属性                                   |
+| ✅在 `<script>` 和 `<template>` 中无差别使用 | ❌在 `<script>` 和 `<template>` 使用方式不同(script中要`.value`) |
+| ❌解构时会丢失响应性,需使用toRefs            | ❌解构对象时会丢失响应性,需使用toRefs                         |
+
+#### 功能单测1
+
+```ts
+import { effect } from '../effect'
+import { ref } from '../ref'
+
+describe('ref', () => {
+    it.only('value', () => {
+        const a = ref(1)
+        expect(a.value).toBe(1)
+    })
+})
+```
+
+ref.ts
+
+```ts
+class RefImpl {
+    private _value: any;
+    constructor(value) {//构造函数
+        this._value = value;
+    }
+
+    get value() {//获取value
+        return this._value;
+    }
+
+    // set value() {
+
+    // }
+}
+
+export function ref(value) {
+    return new RefImpl(value);
+}
+```
+
+#### 功能单测2
+
+```ts
+it('should be reactive', () => {
+    const a = ref(1)
+    let dummy
+    let calls = 0
+    effect(() => {
+        calls++
+        dummy = a.value
+    })
+    expect(calls).toBe(1)//effect执行了一次
+    expect(dummy).toBe(1)
+    a.value = 2
+    expect(calls).toBe(2)
+    expect(dummy).toBe(2)
+    // 值相同不会触发
+    a.value = 2
+    expect(calls).toBe(2)
+    expect(dummy).toBe(2)
+})
+```
+
+ref.ts
+
+```ts
+class RefImpl {
+    private _value: any //值
+    public dep //依赖就是唯一的value
+    constructor(value) {
+        //构造函数
+        this._value = value //存储值
+        this.dep = new Set() //存储依赖
+    }
+
+    get value() {
+        //获取value
+        return this._value
+    }
+
+    set value(newValue) {}
+}
+
+export function ref(value) {
+    return new RefImpl(value)
+}
+```
+
+回到effect抽离get逻辑代码复用
+
+```ts
+	trackEffects(dep)
+}
+
+export function trackEffects(dep) {
+    if (dep.has(activeEffect)) {
+        return
+    }
+    dep.add(activeEffect)
+    activeEffect.deps.push(dep)
+}
+```
+
+ref.ts
+
+```ts
+get value() {
+    trackEffects(this.dep) //收集依赖
+    return this._value //获取value
+}
+```
+
+
+
+#### 功能单测3
+
+```ts
+it('should make nested properties reactive', () => {
+    const a = ref({
+        count: 1,
+    })
+    let dummy
+    effect(() => {
+        dummy = a.value.count
+    })
+    expect(dummy).toBe(1)
+    a.value.count = 2
+    expect(dummy).toBe(2)
+})
+```
+
+
+
+
+
+
+
+
 
 
 
