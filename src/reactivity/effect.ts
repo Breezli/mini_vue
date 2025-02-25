@@ -3,7 +3,7 @@ import { extend } from '../shared'
 let activeEffect //当前激活的effect
 let shouldTrack //是否应该收集依赖
 
-class ReactiveEffect {
+export class ReactiveEffect {
 	private _fn: any
 	public deps = [] //存储依赖
 	active = true
@@ -46,10 +46,13 @@ function cleanupEffect(effect) {
 	effect.deps.length = 0
 }
 
+export function isTracking() {
+	return shouldTrack && activeEffect !== undefined
+}
+
 const targetMap = new Map() //存储依赖关系
 export function track(target, key) {
-	if (!activeEffect || !shouldTrack) {
-		//如果没有激活的effect或者shouldTrack为false，直接返回
+	if (!isTracking()) {
 		return
 	}
 
@@ -78,15 +81,19 @@ export function trackEffects(dep) {
 
 export function trigger(target, key) {
 	let depsMap = targetMap.get(target)
-	if (!depsMap) {
-		return
-	}
+	// if (!depsMap) {
+	// 	return
+	// }
 
 	let dep = depsMap.get(key)
-	if (!dep) {
-		return
-	}
+	// if (!dep) {
+	// 	return
+	// }
 
+	triggerEffects(dep)
+}
+
+export function triggerEffects(dep) { 
 	dep.forEach((effect) => {
 		if (effect.scheduler) {
 			effect.scheduler()
@@ -94,7 +101,6 @@ export function trigger(target, key) {
 		} else {
 			effect.run()
 		}
-		effect.run()
 	})
 }
 

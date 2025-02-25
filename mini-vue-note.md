@@ -1822,10 +1822,14 @@ export function isProxy(value) { //判断是否是代理对象
 | ------------------------------------------- | ------------------------------------------------------------ |
 | ❌只支持**对象**和**数组**(引用数据类型)     | ✅支持基本数据类型+引用数据类型                               |
 | ❌重新分配一个新对象会丢失响应性             | ✅重新分配一个新对象**不会**失去响应                          |
-| ❌重新分配一个新对象会丢失响应性             | ✅传入函数时,不会失去响应                                     |
+| ❌将对象传入函数时,失去响应                  | ✅传入函数时,不会失去响应                                     |
 | 能直接访问属性                              | 需要使用 `.value` 访问属性                                   |
 | ✅在 `<script>` 和 `<template>` 中无差别使用 | ❌在 `<script>` 和 `<template>` 使用方式不同(script中要`.value`) |
 | ❌解构时会丢失响应性,需使用toRefs            | ❌解构对象时会丢失响应性,需使用toRefs                         |
+
+> ref只传单值，不能使用Proxy(Proxy对对象起作用)
+>
+> ref中的任何一个点key都要对应一个dep，get&set进行依赖收集和触发
 
 #### 功能单测1
 
@@ -1912,7 +1916,7 @@ export function ref(value) {
 }
 ```
 
-回到effect抽离get逻辑代码复用
+回到effect抽离 get & set 逻辑代码复用
 
 ```ts
 	trackEffects(dep)
@@ -1925,6 +1929,22 @@ export function trackEffects(dep) {
     dep.add(activeEffect)
     activeEffect.deps.push(dep)
 }
+
+......
+
+	triggerEffects(dep)
+}
+
+export function triggerEffects(dep) { 
+	dep.forEach((effect) => {
+		if (effect.scheduler) {
+			effect.scheduler()
+			return
+		} else {
+			effect.run()
+		}
+	})
+}
 ```
 
 ref.ts
@@ -1934,14 +1954,59 @@ get value() {
     trackEffects(this.dep) //收集依赖
     return this._value //获取value
 }
+
+set value(newValue) {
+    this._value = newValue //设置value
+    triggerEffects(this.dep) //触发依赖
+}
 ```
 
+实现赋值相同不触发effect功能
 
+set value添加
+
+```ts
+if(Object.is(newValue,this._value)) return //如果新值和旧值相等，直接返回
+```
+
+抽离封装成工具函数
+
+```ts
+function trackRefValue(ref) {
+	if (isTracking()) {
+		trackEffects(ref.dep)
+	}
+}
+```
+
+```ts
+export const hasChange = (val, newValue) => {
+	return !Object.is(val, newValue)
+}
+```
+
+get & set value改写
+
+```ts
+get value() {
+    trackRefValue(this) //收集依赖
+    return this._value //获取value
+}
+```
+
+```ts
+set value(newValue) {
+    if (hasChange(newValue, this._value)) {//判断是否有变化
+        this._value = newValue //设置value
+        triggerEffects(this.dep) //触发依赖
+    }
+}
+```
 
 #### 功能单测3
 
 ```ts
-it('should make nested properties reactive', () => {
+it('嵌套响应', () => {
     const a = ref({
         count: 1,
     })
@@ -1955,29 +2020,254 @@ it('should make nested properties reactive', () => {
 })
 ```
 
+> 要实现嵌套就设计递归嘛
 
+```ts
+private _value: any //值
+public dep //依赖就是唯一的value
+private _rawValue: any //原始值
+constructor(value) {
+    this._rawValue = value
+    this._value = isObject(value) ? reactive(value) : value //如果是对象，就递归
+    this.dep = new Set() //存储依赖
+}
 
+set value(newValue) {
+    if (hasChange(newValue, this._rawValue)) {
+        //判断是否有变化
+        this._rawValue = newValue
+        this._value = isObject(newValue) ? reactive(newValue) : newValue
+        triggerEffects(this.dep) //触发依赖
+    }
+}
+```
 
+继续优化
 
+```ts
+private _rawValue: any //原始值
 
+set value(newValue) {
+    if (hasChange(newValue, this._rawValue)) {
+        //判断是否有变化
+        this._rawValue = newValue
+        this._value = convert(newValue) //如果是对象，就递归
+        triggerEffects(this.dep) //触发依赖
+    }
+}
 
+function convert(value) {
+    return isObject(value) ? reactive(value) : value	
+}
+```
 
+### 实现isRef
 
+#### 编写单测
 
+```ts
+it('isRef', () => {
+    const a = ref(1)
+    const user = {
+        age: a,
+    }
+    expect(isRef(a)).toBe(true)
+    expect(isRef(1)).toBe(false)
+    expect(isRef(user)).toBe(false)
+})
+```
 
+#### 功能实现
 
+```ts
+public __v_isRef = true //标识是否是ref
 
+export function isRef(ref) {
+	return !!ref.__v_isRef//转换为布尔值
+}
+```
 
+### 实现unRef
 
+>如果参数是 ref，则返回内部值，否则返回参数本身
 
+#### 编写单测
 
+```ts
+it('unRef', () => {//
+    const a = ref(1)
+    expect(unRef(a)).toBe(1)
+    expect(unRef(1)).toBe(1)
+})
+```
 
+#### 功能实现
 
+```ts
+export function unRef(ref) {
+    return isRef(ref) ? ref.value : ref //如果是ref，就返回value，否则返回原对象	
+}
+```
 
+### 实现proxyRefs (?)
 
+#### 编写单测
 
+```ts
+it('proxyRefs', () => {
+    const user = {
+        age: ref(10),
+        name: 'zf',
+    }
+    const proxyUser = proxyRefs(user)
+    expect(user.age.value).toBe(10)
+    expect(proxyUser.age).toBe(10)//可以省略.value
+    expect(proxyUser.name).toBe('zf')//可以省略.value
 
+    proxyUser.age = 20
+    expect(proxyUser.age).toBe(20)
+    expect(user.age.value).toBe(20)
 
+    proxyUser.age = ref(10)
+    expect(proxyUser.age).toBe(10)
+    expect(user.age.value).toBe(10)
+})
+```
+
+#### 功能实现
+
+> 逻辑：
+>
+> get到ref返回.value，否则直接返回原对象
+>
+> 实例对象触发set会连锁原对象值改变
+
+```ts
+export function proxyRefs(objectWithRefs) {
+    return new Proxy(objectWithRefs, {
+        get(target, key) {
+            return unRef(Reflect.get(target, key)) //如果是ref，就返回value，否则返回原对象
+        },
+        set(target, key, value) {
+            if (isRef(target[key]) && !isRef(value)) {
+                return (target[key].value = value) //如果是ref，就返回value，否则返回原对象
+            } else {
+                return Reflect.set(target, key, value) //如果是ref，就返回value，否则返回原对象
+            }
+        },
+    })
+}
+```
+
+### 实现computed
+
+> 接受一个 [getter 函数](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Functions/get#description)，返回一个只读的响应式 [ref](https://cn.vuejs.org/api/reactivity-core.html#ref) 对象。该 ref 通过 `.value` 暴露 getter 函数的返回值。它也可以接受一个带有 `get` 和 `set` 函数的对象来创建一个可写的 ref 对象。
+
+#### 功能单测1
+
+computed.spec.ts
+
+> `computed` 函数会基于这个 getter 函数创建一个计算属性 `age`，该计算属性的值会根据 `user.age` 的变化而自动更新。
+
+```ts
+import { computed } from '../computed'
+import { reactive } from '../reactive'
+
+describe('computed', () => {
+	it('computed', () => {
+		const user = reactive({
+			age: 1,
+		})
+		const age = computed(() => {
+			return user.age
+		})
+		expect(age.value).toBe(1)
+	})
+})
+```
+
+computed.ts
+
+```ts
+class ComputedRefImpl {
+    private _getter: any
+    constructor(getter) {
+        this._getter = getter
+    }
+    get value() {
+        return this._getter()
+    }
+}
+
+export function computed(getter) {
+    return new ComputedRefImpl(getter)
+}
+```
+
+#### 功能单测2
+
+computed.spec.ts
+
+> 接受一个 [getter 函数](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Functions/get#description)，返回一个只读的响应式 [ref](https://cn.vuejs.org/api/reactivity-core.html#ref) 对象。该 ref 通过 `.value` 暴露 getter 函数的返回值。它也可以接受一个带有 `get` 和 `set` 函数的对象来创建一个可写的 ref 对象。
+
+```ts
+it('should compute lazily', () => {
+    const value = reactive({
+        foo: 1,
+    })
+    const getter = jest.fn(() => {
+        return value.foo
+    })
+    const cValue = computed(getter)
+    expect(getter).not.toHaveBeenCalled()
+    expect(cValue.value).toBe(1)
+    expect(getter).toHaveBeenCalledTimes(1)
+    // 再次访问，不应该再调用
+    cValue.value
+    expect(getter).toHaveBeenCalledTimes(1)
+    // 不应该再调用
+    value.foo = 2
+    expect(getter).toHaveBeenCalledTimes(1)
+    // 触发getter
+    expect(cValue.value).toBe(2)
+    expect(getter).toHaveBeenCalledTimes(2)
+    // 不应该再调用
+    cValue.value
+    expect(getter).toHaveBeenCalledTimes(2)		
+})
+```
+
+computed.ts
+
+```ts
+import { ReactiveEffect } from './effect'
+
+class ComputedRefImpl {
+    private _getter: any
+    private _value: any
+    private _dirty: boolean = true
+    private _effect: any
+    constructor(getter) {
+        this._getter = getter
+        this._effect = new ReactiveEffect(getter, () => {
+            if (!this._dirty) {
+                this._dirty = true
+            }
+        })
+    }
+    get value() {
+        if (this._dirty) {
+            this._dirty = false
+            this._value = this._effect.run()
+        }
+        return this._value
+    }
+}
+
+export function computed(getter) {
+    return new ComputedRefImpl(getter)
+}
+```
 
 
 
