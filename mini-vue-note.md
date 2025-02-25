@@ -2269,6 +2269,8 @@ export function computed(getter) {
 }
 ```
 
+## runtime-core 初始化流程实现
+
 
 
 

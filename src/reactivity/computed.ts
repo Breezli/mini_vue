@@ -13,6 +13,7 @@ class ComputedRefImpl {
 			}
 		})
 	}
+
 	get value() {
 		if (this._dirty) {
 			this._dirty = false
