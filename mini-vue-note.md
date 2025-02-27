@@ -12,6 +12,8 @@ https://github.com/cuixiaorui/mini-vue
 
 <img src="C:\Users\DELL\AppData\Roaming\Typora\typora-user-images\image-20250219223855962.png" alt="image-20250219223855962" style="zoom:50%;" />
 
+### 简单来说
+
 #### 处理编译
 
 >`compiler-sfc`专门解析sfc (使用rollup-vue***把App.vue单文件组件编译成JS***)
@@ -29,6 +31,53 @@ https://github.com/cuixiaorui/mini-vue
 >`runtime-core`***最重点的核心代码***
 >
 >`runtime-reactivity`实现vue的***响应式***
+
+### 更为详细的
+
+#### runtime-reactivity 响应式系统
+
+>提供了诸如 reactive、ref 等 API 来创建响应式对象或变量。
+>使用 WeakMap 数据结构来跟踪依赖关系，确保当数据变化时能够通知相关的观察者进行更新。
+>实现了 effect 函数机制，用于自动追踪和触发副作用函数的执行。
+
+#### runtime-core 跨平台渲染
+
+>Vue3 的运行时核心模块，提供了跨平台的渲染能力。它的主要职责包括：
+>定义了通用的渲染器接口 createRenderer，允许开发者自定义渲染逻辑。
+>实现了组件生命周期管理、插槽机制以及其他运行时所需的基础功能。
+>提供了诸如 h 函数这样的工具，用于创建虚拟 DOM 节点。
+>包含了与平台无关的运行时核心实现（如虚拟 DOM 的渲染器、组件实现和一些全局的 JS API）。
+
+#### runtime-dom DOM方法
+
+>runtime-dom 模块针对浏览器环境实现了具体的运行时逻辑。其主要任务是：
+>封装了一系列与 DOM 操作相关的实用方法，如创建元素、插入节点等。
+>提供了一个基于 runtime-core 的默认渲染器实例，用于将虚拟 DOM 节点渲染到真实的 DOM 容器中。
+>处理特定于浏览器的行为，比如属性绑定、事件监听器添加等。
+>对原生 DOM API、属性、样式、事件等进行管理。
+
+#### compiler-sfc 解析.vue组件
+
+>compiler-sfc 模块负责解析单文件组件（.vue 文件），它将 .vue 文件中的 <template>、<script> 和 <style> 部分分别提取出来，并对它们进行相应的处理。具体而言：
+>对于 <template> 部分，会调用 compiler-dom 来将其编译为渲染函数。
+>对于 <script> 部分，可能会做一些额外的处理，比如注入上下文或处理 TypeScript 类型声明。
+>对于 <style> 部分，则可能涉及 CSS 模块化处理或者其他样式相关的转换。
+
+#### compiler-core 编译逻辑和算法
+
+>作为 Vue 编译的核心模块，compiler-core 是平台无关的，提供了基础的编译逻辑和算法。它的职责是定义了编译的基本流程，包括但不限于：
+>提供 baseParse 函数用于解析模板字符串到 AST。
+>定义了 transform 方法来对 AST 进行转换。
+>实现了 generate 函数用来从 AST 生成最终的渲染函数代码。
+>提供了与平台无关的代码转换插件，适用于不同类型的编译需求。
+
+#### compiler-dom 浏览器模板编译
+
+>该模块专注于浏览器端的模板编译工作。它的主要功能包括：
+>接收 Vue 的模板字符串作为输入，通过调用 baseCompile 函数来执行实际的编译过程。
+>将模板字符串解析为抽象语法树（AST）。
+>对 AST 进行必要的转换和优化。
+>最终生成可执行的 JavaScript 渲染函数代码，以便在浏览器环境中运行。
 
 # runtime-reactivity 响应式系统
 
@@ -696,7 +745,7 @@ export default {//一个对象
 > >
 > >>返回mountElement函数,下一步调用**hostInsert**(el,container[根组件])[将所有的一切插回#root根元素组件]到此所有元素就都在页面上展示出来了，也就是初始化的全过程
 > >
-> >>**updateElement** 更新
+> >>**patchElement** 
 
 > 通俗来说：***调用render就是“拆箱”的过程***直到把内部所有的组件渲染到浏览器上
 
@@ -2271,7 +2320,429 @@ export function computed(getter) {
 
 ## runtime-core 初始化流程实现
 
+### 总览导图
+
+> 全程跟着这个流程图实现
+
+![runtime-core](C:\Users\DELL\Downloads\runtime-core.jpg)
+
+创建src / runtime-core文件夹
+
+> 这次的测试样例放在根目录下的example / helloworld
+
+### 初始化 component 主流程
+
+#### 测试文件
+
+example / helloworld / index.html
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Document</title>
+	</head>
+	<body>
+        <div id="app"></div>
+		<script src="main.js" type="module"></script>
+	</body>
+</html>
+```
+
+以下文件模拟Vue3
+
+main.js
+
+```ts
+createApp(App).mount('#app')
+👇
+createApp(App) + app.mount('#app')
+//创建一个根组件App(Vue应用实例)，然后将其挂载到<div id="app"></div>中，从此这个 <div> 里的内容由 Vue 接管，Vue 会根据 App 的图纸，在<div>中渲染出你写的组件
+```
+
+App.js
+
+> !!! 有关虚拟节点 先去看看这篇文章[vue3虚拟dom详解(含源码) - 掘金](https://juejin.cn/post/7323031996864446505) !!!
+
+```js
+export const App = {
+	render() {//UI逻辑
+		return h( //Vue 中的创建虚拟 DOM 的辅助函数,用于创建虚拟 DOM 节点,接收三个参数：
+			'div', //要创建的 HTML 标签名或组件选项对象.
+			'hi, ' + this.msg //子节点,可以是字符串、数字、数组或其他虚拟 DOM 节点.
+		)
+	},
+	setup() {//组合式 API 的入口点,用于组合组件的逻辑，例如响应式数据、生命周期钩子、计算属性等
+		return {
+			msg: 'mini-vue',
+		}
+	},
+}
+```
+
+#### 基础实现
+
+createApp.ts
+
+```ts
+export function createApp(rootComponent: any) { // 传入根组件
+	return {
+		mount(rootContainer: any) { // 挂载回根容器
+			// 先把根组件转换成虚拟节点vnode
+			// 之后所有的操作都会基于vnode做处理
+			const vnode = createVNode(rootComponent)
+		},
+	}
+}
+```
+
+vnode.ts
+
+```ts
+export function createVNode(type: any, props?: any, children?: any) {
+    const vnode = {
+        type,// 类型
+        props,// 属性
+        children,// 孩子
+        el: null,// 对应的真实dom
+        component: null,// 组件实例
+        key: props?.key,// 唯一标识
+        // shapeFlag: getShapeFlag(type), // 类型标识
+    }
+    return vnode
+}
+```
+
+添加render函数
+
+```ts
+mount(rootContainer: any) {
+    const vnode = createVNode(rootComponent)
+
+    render(vnode, rootContainer)
+},
+```
+
+renderer.ts
+
+```ts
+import { createComponentInstance } from "./component"
+
+export function render(vnode: any, container: any) {
+	// 调用patch函数
+	patch(vnode, container)
+}
+
+function patch(vnode: any, container: any) {
+	if (vnode.shapeFlag === 1) {
+		// 处理element
+		processElement(vnode, container)	
+	}else if (vnode.shapeFlag === 8) {
+		// 处理component
+		processComponent(vnode, container)
+	}
+}
+
+function processElement(vnode: any, container: any) {
+	mountElement(vnode, container)	
+}
+
+function mountElement(vnode: any, container: any) {
+    // 创建组件实例对象
+	const instance = createComponentInstance(vnode)
+
+	// 处理组件的setup
+	setupComponent(instance)
+
+	// 处理组件的render
+	setupRenderEffect(instance, vnode, container)
+}
+```
+
+component.ts
+
+```ts
+export function createComponentInstance(vnode: any) {
+    const instance = {
+        vnode,          // 组件的虚拟节点（设计图）
+        type: vnode.type, // 组件定义（比如你写的 .vue 文件中的对象）
+        props: vnode.props, // 外部传入的属性
+        slots: vnode.slots, // 插槽内容（类似 `<template #header>`）
+        proxy: null,     // 代理对象（用于访问数据和属性）
+    };
+    return instance;
+}
+
+export function setupComponent(instance: any) {
+    // 初始化组件
+    initProps(instance)
+    initSlots(instance)
+
+    // 处理组件的setup
+    setupStatefulComponent(instance)
+}
+
+export function setupStatefulComponent(instance: any) {
+    // 先拿到组件
+    const Component = instance.type // 组件定义（比如你写的 setup 函数）
+
+    // 代理对象（用于访问数据和属性）
+    instance.proxy = new Proxy(instance, {
+        get(target, key) {
+            const { setup, props } = target
+
+            if (key in setup) {// 优先从 setup 返回值中找
+                return setup[key]			
+            }	else if (key in props) {// 其次从 props 中找
+                return props[key]
+            }
+            return Reflect.get(target, key)
+        }
+    })	
+
+    const { setup } = Component //解构出setup
+
+    if (setup) {
+        setCurrentInstance(instance) // 标记“当前对象是谁”
+        const setupResult = setup() // 执行你的 setup 函数
+        setCurrentInstance(null) // 清除标记
+
+        handleSetupResult(instance, setupResult) // 保存 setup 返回值
+    }else {
+        finishComponentSetup(instance) // 没有 setup 直接完成初始化
+    }
+}
+
+function handleSetupResult(instance: any, setupResult: any) {
+    if (typeof setupResult === 'object') {
+        instance.setupState = setupResult; // 保存 setup 返回的对象
+    }
+    finishComponentSetup(instance); // 完成组装
+}
+
+function finishComponentSetup(instance: any) {
+    const Component = instance.type;
+    // 确定 render 函数（你写的 template 会被编译成 render 函数）
+    instance.render = Component.render || instance.vnode.render;
+    // 准备渲染（虚拟 DOM 生成真实 DOM）
+    setupRenderEffect(instance);
+}
+```
+
+renderer.ts 继续完善逻辑
+
+> 回调render，实现 “拆箱” 
+
+```ts
+function setupRenderEffect(instance: any, vnode: any, container: any) {
+	const { proxy } = instance
+	const subTree = instance.render.call(proxy) //拿到虚拟节点树
+
+	// vnode -> patch
+	// vnode -> element -> mountElement
+	patch(subTree, container)
+
+	vnode.el = subTree.el
+}
+```
+
+### 使用 rollup 打包库
+
+>rollup一般用于库的打包，而webpack更多用于应用的打包
+>
+>> 构建输出的作用👇
+>>
+>> ```
+>> 提供对不同模块格式的支持，增强库的兼容性
+>> 优化代码体积与性能
+>> 简化库的分发与使用流程，促进组件复用
+>> 实现按需加载
+>> ```
+>>
+>> 在以下案例中就构建了两种格式 CommonJS & ES Module 的文件
+
+安装
+
+```
+pnpm install --global rollup
+```
+
+安装官方依赖
+
+```
+pnpm install @rollup/plugin-typescript --save-dev
+pnpm install tslib
+```
+
+> 创建 src / index.ts 作为 mini-vue 的出入口
+
+rollup.config.js 编写脚本文件
+
+```js
+import typescript from '@rollup/plugin-typescript'
+
+export default {
+    input: 'src/index.ts', // 入口文件
+    output: [
+        {
+            file: 'lib/guide-mini-vue.cjs.js', // 输出的 CommonJS 格式文件
+            format: 'cjs', // 指定输出格式为 CommonJS
+        },
+        {
+            file: 'lib/guide-mini-vue.esm.js', // 输出的 ES Module 格式文件
+            format: 'es', // 指定输出格式为 ES Module
+        }
+    ],
+    plugins: [
+        // 插件列表
+    ]
+};
+```
+
+> 构建的输出文件就是lib下的 guide-mini-vue.cjs.js & guide-mini-vue.esm.js 这两个文件
+
+在package.json中打开依赖
+
+```json
+"scripts": {
+    "test": "jest",
+    "build": "rollup -c config.js"
+},
+```
+
+更改tsconfig.json依赖项
+
+```json
+"module": "esnext",
+```
+
+处理src下的index文件
+
+```ts
+// mini-vue 的入口
+export * from './runtime-core'
+```
+
+再处理runtime-core下的index文件
+
+```ts
+export { createApp } from "./createApp";
+```
+
+> pnpm build 即可构建两种格式的文件
+
+***补充h函数逻辑***
+
+> 前情提要
+>
+> example下的App.js文件
+>
+> ```js
+> export const App = {
+>     render() { // UI逻辑
+>         return h( // Vue 中的创建虚拟 DOM 的辅助函数,用于创建虚拟 DOM 节点,接收三个参数：
+>             'div', // 要创建的 HTML 标签名或组件选项对象.
+>             {}, // 标签属性,可以是一个对象或数组.
+>             'hi, ' + this.msg // 子节点,可以是字符串、数字、数组或其他虚拟 DOM 节点.
+>         )
+>     },
+>     setup() { // 组合式 API 的入口点,用于组合组件的逻辑，例如响应式数据、生命周期钩子、计算属性等
+>         return {
+>             msg: 'mini-vue',
+>         }
+>     },
+> }
+> ```
+
+runtime-core / h.ts
+
+```ts
+import { createVNode } from "./vnode";
+
+export function h(type: any, props?: any, children?: any) {
+	return createVNode(type, props, children)
+}
+```
+
+runtime-core / index.ts
+
+```ts
+export { createApp } from './createApp'
+import { h } from './h'
+```
+
+>pnpm build 继续构建到 example 测试项目里
+
+然后就可以在example中直接引用构建下来的文件
+
+main.js
+
+```ts
+// vue3
+import { createApp } from '../../lib/guide-mini-vue.esm.js' // 导入自己构建的文件
+import { App } from './App.js'
+
+createApp(App).mount('#app')
+```
+
+然后就可以打开HTML文件了
 
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## runtime-dom 封装DOM方法
+
+## compiler-core 编译逻辑和算法
+
+## compiler-sfc 解析.vue组件
+
+## compiler-dom 处理template标签
