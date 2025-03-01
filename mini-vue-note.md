@@ -2563,6 +2563,8 @@ function setupRenderEffect(instance: any, vnode: any, container: any) {
 >>
 >> 在以下案例中就构建了两种格式 CommonJS & ES Module 的文件
 
+#### 配置rollup
+
 安装
 
 ```
@@ -2581,29 +2583,40 @@ pnpm install tslib
 rollup.config.js 编写脚本文件
 
 ```js
+import pkg from './package.json' assert { type: 'json' } // 导入格式文件
 import typescript from '@rollup/plugin-typescript'
 
 export default {
     input: 'src/index.ts', // 入口文件
     output: [
         {
-            file: 'lib/guide-mini-vue.cjs.js', // 输出的 CommonJS 格式文件
+            file: pkg.main, // 输出的 CommonJS 格式文件
             format: 'cjs', // 指定输出格式为 CommonJS
         },
         {
-            file: 'lib/guide-mini-vue.esm.js', // 输出的 ES Module 格式文件
+            file: pkg.module, // 输出的 ES Module 格式文件
             format: 'es', // 指定输出格式为 ES Module
         }
     ],
     plugins: [
         // 插件列表
+        typescript(),
     ]
 };
 ```
 
 > 构建的输出文件就是lib下的 guide-mini-vue.cjs.js & guide-mini-vue.esm.js 这两个文件
 
-在package.json中打开依赖
+在package.json中打开并添加依赖
+
+```json
+"name": "my-mini-vue",
+"version": "1.0.0",
+"type": "module",
+"main": "lib/guide-mini-vue.cjs.js", // 输出的 CommonJS 格式文件
+"module": "lib/guide-mini-vue.esm.js", // 输出的 ES Module 格式文件
+"license": "ISC",
+```
 
 ```json
 "scripts": {
@@ -2617,6 +2630,8 @@ export default {
 ```json
 "module": "esnext",
 ```
+
+#### 使用
 
 处理src下的index文件
 
@@ -2643,9 +2658,9 @@ export { createApp } from "./createApp";
 > export const App = {
 >     render() { // UI逻辑
 >         return h( // Vue 中的创建虚拟 DOM 的辅助函数,用于创建虚拟 DOM 节点,接收三个参数：
->             'div', // 要创建的 HTML 标签名或组件选项对象.
->             {}, // 标签属性,可以是一个对象或数组.
->             'hi, ' + this.msg // 子节点,可以是字符串、数字、数组或其他虚拟 DOM 节点.
+>             'div', // type：要创建的 HTML 标签名或组件选项对象.
+>             { id: 'root', class: ['red', 'hard'] }, // props：标签属性,可以是一个 对象 或 数组.
+>             'hi, ' + this.msg // children：子节点,可以是 字符串、数字、数组、其他虚拟 DOM 节点.
 >         )
 >     },
 >     setup() { // 组合式 API 的入口点,用于组合组件的逻辑，例如响应式数据、生命周期钩子、计算属性等
@@ -2689,17 +2704,75 @@ createApp(App).mount('#app')
 
 然后就可以打开HTML文件了
 
+### 初始化 Element 主流程
+
+回到patch函数，继续完善
+
+```ts
+function patch(vnode: any, container: any) {
+	console.log(vnode)
+	console.log(vnode.type)
+	console.log(container)
+	if (typeof vnode.type === 'string') {// 处理元素
+		processElement(vnode, container)
+	} else if (typeof vnode.type === 'object') {// 处理组件
+		processComponent(vnode, container)
+	}
+}
+```
+
+```ts
+function processElement(vnode: any, container: any) {
+	mountElement(vnode, container)	
+}
+```
+
+```ts
+function processElement(vnode: any, container: any) {
+	mountElement(vnode, container)
+}
+```
+
+#### 分支-mountElement初始化
+
+> 把虚拟节点vnode转化为一个真实的dom元素
+
+```ts
+function mountElement(vnode: any, container: any) {
+	const el = document.createElement(vnode.type) // 创建真实dom
+
+	const { children, props } = vnode
+
+	if (typeof children === 'string') {
+		el.textContent = children // 文本节点
+	} else if (Array.isArray(children)) {
+		mountChildren(vnode, container) // 处理children
+	}
+
+	if (props) {
+		for (const key in props) {
+			const val = props[key] // 拿到属性值
+			el.setAttribute(key, val) // 给真实dom设置属性
+		}
+	}
+
+	container.append(el) // 挂载到容器中
+}
+```
+
+完善mountChildren函数
+
+```ts
+function mountChildren(vnode: any, container: any) {
+	vnode.children.forEach((v: any) => {
+		patch(v, container) // 递归处理children
+	})
+}
+```
 
 
 
-
-
-
-
-
-
-
-
+#### 分支-processElement初始化
 
 
 
