@@ -201,18 +201,18 @@ function createReactiveObject(target, proxyMap, baseHandlers) {//原理是JS创�
 > 
 > // 创建一个 Proxy 对象
 > const reactiveObj = new Proxy(target, {
-> get(target, key, receiver) {
->  console.log(`Getting ${key}`);
->  return Reflect.get(target, key, receiver);
-> },
-> set(target, key, value, receiver) {
->  console.log(`Setting ${key} to ${value}`);
->  const result = Reflect.set(target, key, value, receiver);
->  if (result) {
->    console.log("Trigger updates...");
->  }
->  return result;
-> }
+>     get(target, key, receiver) {
+>          console.log(`Getting ${key}`);
+>          return Reflect.get(target, key, receiver);
+>     },
+>     set(target, key, value, receiver) {
+>          console.log(`Setting ${key} to ${value}`);
+>          const result = Reflect.set(target, key, value, receiver);
+>          if (result) {
+>                console.log("Trigger updates...");
+>          }
+>          return result;
+>     }
 > });
 > 
 > // 测试
@@ -2776,11 +2776,38 @@ function mountChildren(vnode: any, container: any) {
 
 
 
+### 完善代理对象
 
+setupStatefulComponent 新增 创建代理对象 逻辑
 
+```ts
+// 创建代理对象
+instance.proxy = new Proxy({ _: instance }, componentPublicInstance)
+```
 
+创建 componentPublicInstance.ts
 
+```ts
+const publidPropertyMap = {
+	$el: (i) => i.vnode.el,
+	$slots: (i) => i.slots,
+	$props: (i) => i.props,	
+}
 
+export const componentPublicInstance = {
+	get({ _: instance }, key) {
+		const { setupState, props } = instance
+		if (key in setupState) {
+			return setupState[key]
+		}
+
+		const publicGetter = publidPropertyMap[key]
+		if (publicGetter) {
+			return publicGetter(instance)
+		}
+	},
+}
+```
 
 
 

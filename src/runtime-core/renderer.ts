@@ -35,14 +35,14 @@ function mountComponent(vnode: any, container: any) {
 }
 
 function mountElement(vnode: any, container: any) {
-	const el = document.createElement(vnode.type) // 创建真实dom
+	const el = (document.createElement(vnode.type) as HTMLElement) // 创建真实dom
 
 	const { children, props } = vnode
 
 	if (typeof children === 'string') {
 		el.textContent = children // 文本节点
 	} else if (Array.isArray(children)) {
-		mountChildren(vnode, container) // 处理children
+		mountChildren(vnode, el) // 处理children
 	}
 
 	if (props) {
@@ -56,6 +56,7 @@ function mountElement(vnode: any, container: any) {
 }
 
 function mountChildren(vnode: any, container: any) {
+
 	vnode.children.forEach((v: any) => {
 		patch(v, container) // 递归处理children
 	})
@@ -63,8 +64,6 @@ function mountChildren(vnode: any, container: any) {
 
 export function setupRenderEffect(instance: any, vnode: any, container: any) {
 	const { proxy } = instance
-	console.log('proxy:', proxy)
-
 	const subTree = instance.render.call(proxy)
 
 	console.log('subTree:', subTree)

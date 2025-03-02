@@ -1,4 +1,5 @@
-import { setupRenderEffect } from "./renderer"
+import { PublicInstanceProxyHandlers } from './componentPublicInstance'
+import { setupRenderEffect } from './renderer'
 
 export function createComponentInstance(vnode: any) {
 	const instance = {
@@ -6,7 +7,7 @@ export function createComponentInstance(vnode: any) {
 		type: vnode.type,
 		props: vnode.props,
 		slots: vnode.slots,
-		proxy: null,// 代理对象
+		proxy: null, // 代理对象
 	}
 	return instance
 }
@@ -21,36 +22,23 @@ export function setupComponent(instance: any) {
 }
 
 export function setupStatefulComponent(instance: any) {
-    // 先拿到组件
+	// 先拿到组件
 	const Component = instance.type
 
 	// 创建代理对象
-	// instance.proxy = new Proxy(instance, {
-	// 	get(target, key) {
-    //         console.log('target:', target)
-    //         console.log('key:', key)
-	// 		const { setup, props } = target
-
-	// 		if (key in setup) {
-	// 			return setup[key]			
-	// 		}	else if (key in props) {
-	// 			return props[key]
-	// 		}
-	// 		return Reflect.get(target, key)
-	// 	}
-	// })	
+	instance.proxy = new Proxy({ _: instance }, PublicInstanceProxyHandlers)
 
 	const { setup } = Component //解构出setup
-    console.log('setup:', setup)
+	console.log('setup:', setup)
 
 	if (setup) {
 		// setCurrentInstance(instance)
 		const setupResult = setup()
-        console.log('setupResult:', setupResult)
+		console.log('setupResult:', setupResult)
 		// setCurrentInstance(null)
 
 		handleSetupResult(instance, setupResult)
-	}else {
+	} else {
 		finishComponentSetup(instance)
 	}
 }
@@ -60,16 +48,16 @@ function handleSetupResult(instance: any, setupResult: any) {
 		instance.setupState = setupResult
 	}
 
-	finishComponentSetup(instance)// 处理组件的render
+	finishComponentSetup(instance) // 处理组件的render
 }
 
 function finishComponentSetup(instance: any) {
-    // 拿到组件
+	// 拿到组件
 	const Component = instance.type
 
 	if (Component.render) {
 		instance.render = Component.render
-	}else {
+	} else {
 		instance.render = instance.vnode.render
 	}
 }
