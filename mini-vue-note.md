@@ -2790,11 +2790,11 @@ instance.proxy = new Proxy({ _: instance }, componentPublicInstance)
 ```ts
 const publidPropertyMap = {
 	$el: (i) => i.vnode.el,
-	$slots: (i) => i.slots,
-	$props: (i) => i.props,	
+	// $slots: (i) => i.slots,
+	// $props: (i) => i.props,	
 }
 
-export const componentPublicInstance = {
+export const PublicInstanceProxyHandlers = {
 	get({ _: instance }, key) {
 		const { setupState, props } = instance
 		if (key in setupState) {
@@ -2809,33 +2809,404 @@ export const componentPublicInstance = {
 }
 ```
 
+### 实现shapeFlags
 
+#### 位运算实现
 
+shared目录
 
+ShapeFlags.ts
 
+```js
+export const enum ShapeFlags {
+	ELEMENT = 1, // 0001
+	STATEFUL_COMPONENT = 1 << 1, // 0010
+	TEXT_CHILDREN = 1 << 2, // 0100
+	ARRAY_CHILDREN = 1 << 3, // 1000
+}
+```
 
+test.ts
 
+```ts
+const ShapeFlags = {
+	ELEMENT: 0,
+	STATEFUL_COMPONENT: 0,
+	text_children: 0,
+	array_children: 0,
+}
 
+// vnode -> stateful_component
+// 1.可以设置 修改
+// ShapeFlags.stateful_component = 1;
+// ShapeFlags.array children = 1;
 
+// 2.查找
+// if(shapeFlags.element)
+// if(shapeFlags.stateful_component)
 
+// 不够高效 -> 位运算的方式来
+// 0000
+// 0001 -> element
+// 0010 -> stateful
+// 0100 -> text children
+// 1000 -> array_children
 
+// 1010
 
+// | (两位都为 0, 才为0)
+// & (两位都为 1, 才为1)
 
+// 修改 |
+// 0000
+// 0001
+// ————
+// 0001
 
+// 查找 &
+// 0000
+// 0001
+// ————
+// 0000
+```
 
+#### 更改逻辑
 
+重写vnode
 
+```ts
+import { ShapeFlags } from '../shared/ShapeFlags'
 
+export function createVNode(type: any, props?: any, children?: any) {
+	const vnode = {
+		type, // 类型
+		props, // 属性
+		children, // 孩子
+		el: null, // 对应的真实dom
+		component: null, // 组件实例
+		key: props?.key, // 唯一标识
+		shapeFlag: getShapeFlag(type), // 类型标识
+	}
 
+	if (typeof children === 'string') {
+		vnode.shapeFlag |= ShapeFlags.TEXT_CHILDREN // 0001 | 0100 = 0101
+	} else if (Array.isArray(children)) {
+		vnode.shapeFlag |= ShapeFlags.ARRAY_CHILDREN // 0001 | 1000 = 1001
+	}
 
+	return vnode
+}
 
+function getShapeFlag(type: any) {
+	return typeof type === 'string'
+		? ShapeFlags.ELEMENT
+		: ShapeFlags.STATEFUL_COMPONENT
+}
+```
 
+更改patch逻辑
 
+```ts
+function patch(vnode: any, container: any) {
+	console.log(vnode)
+	console.log(vnode.type) // 打印render&setup
+	console.log(container) // 打印<div id="app"></div>
+	const { shapeFlag } = vnode
+	if (shapeFlag & ShapeFlags.ELEMENT) {
+		// 处理元素
+		processElement(vnode, container)
+	} else if (shapeFlag & ShapeFlags.STATEFUL_COMPONENT) {
+		// 处理组件
+		processComponent(vnode, container)
+	}
+}
+```
 
+更改mountElement逻辑
 
+```ts
+function mountElement(vnode: any, container: any) {
+	const el = document.createElement(vnode.type) as HTMLElement // 创建真实dom
 
+	const { children, props, shapeFlag } = vnode
 
+	if (shapeFlag & ShapeFlags.TEXT_CHILDREN) {
+		el.textContent = children // 文本节点
+	} else if (shapeFlag & ShapeFlags.ARRAY_CHILDREN) {
+		mountChildren(vnode, el) // 处理children
+	}
 
+	if (props) {
+		for (const key in props) {
+			const val = props[key] // 拿到属性值
+			el.setAttribute(key, val) // 给真实dom设置属性
+		}
+	}
+
+	container.append(el) // 挂载到容器中
+}
+```
+
+### 实现注册事件
+
+```ts
+return h(
+    // Vue 中的创建虚拟 DOM 的辅助函数,用于创建虚拟 DOM 节点,接收三个参数：
+    'div', // 要创建的 HTML 标签名或组件选项对象.
+    {
+        id: 'root',
+        class: ['red', 'hard'],
+        onClick() {
+            //添加事件
+            console.log('click')
+            this.msg = 'vue'
+        },
+        onMousedown() {
+            console.log('mouse down')
+        },
+    }, // 标签属性,可以是一个对象或数组.
+    'hi,' + this.msg // 子节点,可以是字符串、数字、数组或其他虚拟 DOM 节点.
+    // 'hi, mini-vue' //string类型
+    // [h('p', { class: 'red' }, 'hi'), h('p', { class: 'blue' }, 'mini-vue')]// 数组类型
+)
+```
+
+更改mountElement逻辑
+
+```ts
+function mountElement(vnode, container) {
+    const el = (vnode.el = document.createElement(vnode.type)); // 创建真实dom <div></div>
+    const { children, props } = vnode; 
+    // (首次)解构为
+    // 'hi, mini-vue'
+    // { id: 'root', class: ['red', 'hard'] }
+    // (二次)解构为
+    // [h('p', { class: 'red' }, 'hi'), h('p', { class: 'blue' }, 'mini-vue')]
+    // { id: 'root', class: ['red', 'hard'] }
+    
+    if (typeof children === 'string') { // 文本节点(首次样例)
+        el.textContent = children; // 直接把'hi, mini-vue'插入到<div></div>下0位处
+    }
+    else if (Array.isArray(children)) { // 数组节点(二次样例)
+        mountChildren(vnode, el); // 拆分数组 + patch回调 (此时el是<p>,container是<div>)
+    }
+    
+    if (props) {
+        for (const key in props) { // 遍历key
+            const val = props[key]; // 拿到属性值val
+            el.setAttribute(key, val); // Web内置API,把键值对嵌入div标签
+        }
+    }
+    
+    container.append(el); // Web内置API,把el挂载到容器中
+    // (首次)挂载为
+    // container : <div id="app"></div>
+    // el : <div id="root" class="red,hard"></div>
+    // (二次)挂载为
+    // container : <div id="root" class="red,hard"></div>
+    // el : <p class="..."></p>
+}
+```
+
+#### 样例版
+
+```ts
+for (const key in props) {
+    const val = props[key] // 拿到属性值
+    if (key === 'onClick') {
+        el.addEventListener('click', val) // 给真实dom设置事件
+    } else {
+        el.setAttribute(key, val) // 给真实dom设置属性
+    }
+}
+```
+
+#### 通用版
+
+```ts
+for (const key in props) {
+    const val = props[key] // 拿到属性值
+    const isOn = (key: string) => /^on[A-Z]/.test(key) // 判断是否是事件
+    if (isOn(key)) {
+        const event = key.slice(2).toLowerCase() // 拿到事件名
+        el.addEventListener(event, val) // 给真实dom绑定事件
+    } else {
+        el.setAttribute(key, val) // 给真实dom绑定属性
+    }
+}
+```
+
+### 实现props逻辑
+
+#### 新建测试
+
+example / helloworld / Foo.js
+
+```ts
+import { h } from '../../lib/guide-mini-vue.esm'
+
+export const Foo = {
+	setup(props) {
+		console.log(props)
+	},
+	render() {
+		return h(
+			'div',
+			{
+				onClick: () => {
+					emit('add-1', 1, 2)
+				},
+			},
+			'foo: ' + this.count
+		)
+	},
+}
+```
+
+修改App.js
+
+```ts
+return h(
+    // Vue 中的创建虚拟 DOM 的辅助函数,用于创建虚拟 DOM 节点,接收三个参数：
+    'div', // 要创建的 HTML 标签名或组件选项对象.
+    {
+        id: 'root',
+        class: ['red', 'hard'],
+        onClick() {
+            //添加事件
+            console.log('click')
+            this.msg = 'vue'
+        },
+        onMousedown() {
+            console.log('mousedown')
+        },
+    }, // 标签属性,可以是一个对象或数组.
+    // 'hi,' + this.msg // 子节点,可以是字符串、数字、数组或其他虚拟 DOM 节点.
+    // 'hi, mini-vue' //string类型
+    // [h('p', { class: 'red' }, 'hi'), h('p', { class: 'blue' }, 'mini-vue')]// 数组类型
+    [h('div', {}, 'hi' + this.msg), h(Foo)] // 数组类型
+)
+```
+
+#### 逻辑实现
+
+在 setupComponent 函数中打开 initProps
+
+```ts
+export function setupComponent(instance: any) {
+	// 初始化组件
+	initProps(instance,instance.vnode.props)
+	// initSlots(instance)
+
+	// 处理组件的setup
+	setupStatefulComponent(instance)
+}
+```
+
+新建 componentProps.ts 文件
+
+```ts
+export function initProps(instance: any, rawProps: any) {
+    instance.props = rawProps || {}
+}
+```
+
+修改 setupStatefulComponent 逻辑
+
+```ts
+export function setupStatefulComponent(instance: any) {
+	const Component = instance.type // 先拿到组件
+	instance.proxy = new Proxy({ _: instance }, PublicInstanceProxyHandlers) // 创建代理对象
+
+	const { setup } = Component // 解构出setup
+
+	if (setup) {
+		const setupResult = setup(instance.props)
+		handleSetupResult(instance, setupResult)
+	} else {
+		finishComponentSetup(instance)
+	}
+}
+```
+
+再次重构 componentPublicInstance.ts
+
+```ts
+const publidPropertyMap = {
+	$el: (i) => i.vnode.el,
+	// $slots: (i) => i.slots,
+	// $props: (i) => i.props,
+}
+
+export const PublicInstanceProxyHandlers = {
+	get({ _: instance }, key) {
+		const { setupState, props } = instance
+		if (key in setupState) {
+			return setupState[key]
+		}
+
+		const hasOwn = (val: object, key: string) =>
+			Object.prototype.hasOwnProperty.call(val, key)
+
+		if (hasOwn(setupState, key)) {
+			return setupState[key]
+		} else if (props in instance) {
+			return props[key]
+		}
+
+		const publicGetter = publidPropertyMap[key]
+		if (publicGetter) {
+			return publicGetter(instance)
+		}
+	},
+}
+```
+
+使用之前写的 shallowReadonly 函数实现 props 属性浅层只读
+
+```ts
+export function setupStatefulComponent(instance: any) {
+	const Component = instance.type // 先拿到组件
+	instance.proxy = new Proxy({ _: instance }, PublicInstanceProxyHandlers) // 创建代理对象
+
+	const { setup } = Component // 解构出setup
+
+	if (setup) {
+		const setupResult = setup(shallowReadonly(instance.props))
+		handleSetupResult(instance, setupResult)
+	} else {
+		finishComponentSetup(instance)
+	}
+}
+```
+
+>回顾 shallowReadonly
+
+```ts
+export function shallowReadonly(raw) {
+	return createActiveEffect(raw, shallowReadonlyHandlers)
+}
+```
+
+优化 createActiveEffect 逻辑
+
+```ts
+function createActiveEffect(raw: any, baseHanders) {
+	// 1.判断是否是对象
+	if (!isObject(raw)) {
+		console.warn(`target ${raw} 必须是一个对象`)
+		return raw
+	}
+	
+	// 2.如果已经是代理对象，不需要再次代理
+	if (raw[ReactiveFlags.IS_REACTIVE] || raw[ReactiveFlags.IS_READONLY]) {
+		return raw		
+	}
+
+	// 3.创建代理对象
+	return new Proxy(raw, baseHanders)
+}
+```
 
 
 

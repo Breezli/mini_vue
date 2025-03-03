@@ -1,3 +1,4 @@
+import { ShapeFlags } from '../shared/ShapeFlags'
 import { createComponentInstance, setupComponent } from './component'
 
 export function render(vnode: any, container: any) {
@@ -9,10 +10,11 @@ function patch(vnode: any, container: any) {
 	console.log(vnode)
 	console.log(vnode.type) // 打印render&setup
 	console.log(container) // 打印<div id="app"></div>
-	if (typeof vnode.type === 'string') {
+	const { shapeFlag } = vnode
+	if (shapeFlag & ShapeFlags.ELEMENT) {
 		// 处理元素
 		processElement(vnode, container)
-	} else if (typeof vnode.type === 'object') {
+	} else if (shapeFlag & ShapeFlags.STATEFUL_COMPONENT) {
 		// 处理组件
 		processComponent(vnode, container)
 	}
@@ -35,20 +37,26 @@ function mountComponent(vnode: any, container: any) {
 }
 
 function mountElement(vnode: any, container: any) {
-	const el = (document.createElement(vnode.type) as HTMLElement) // 创建真实dom
+	const el = document.createElement(vnode.type) as HTMLElement // 创建真实dom
 
-	const { children, props } = vnode
+	const { children, props, shapeFlag } = vnode
 
-	if (typeof children === 'string') {
+	if (shapeFlag & ShapeFlags.TEXT_CHILDREN) {
 		el.textContent = children // 文本节点
-	} else if (Array.isArray(children)) {
+	} else if (shapeFlag & ShapeFlags.ARRAY_CHILDREN) {
 		mountChildren(vnode, el) // 处理children
 	}
 
 	if (props) {
 		for (const key in props) {
 			const val = props[key] // 拿到属性值
-			el.setAttribute(key, val) // 给真实dom设置属性
+			const isOn = (key: string) => /^on[A-Z]/.test(key) // 判断是否是事件
+			if (isOn(key)) {
+				const event = key.slice(2).toLowerCase() // 拿到事件名
+				el.addEventListener(event, val) // 给真实dom绑定事件
+			} else {
+				el.setAttribute(key, val) // 给真实dom绑定属性
+			}
 		}
 	}
 
@@ -56,7 +64,6 @@ function mountElement(vnode: any, container: any) {
 }
 
 function mountChildren(vnode: any, container: any) {
-
 	vnode.children.forEach((v: any) => {
 		patch(v, container) // 递归处理children
 	})
@@ -67,7 +74,7 @@ export function setupRenderEffect(instance: any, vnode: any, container: any) {
 	const subTree = instance.render.call(proxy)
 
 	console.log('subTree:', subTree)
-    console.log('container:', container)
+	console.log('container:', container)
 
 	// vnode -> patch
 	// vnode -> element -> mountElement

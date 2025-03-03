@@ -1,5 +1,7 @@
+import { initProps } from './componentProps'
 import { PublicInstanceProxyHandlers } from './componentPublicInstance'
 import { setupRenderEffect } from './renderer'
+import { shallowReadonly } from '../reactivity/reactive'
 
 export function createComponentInstance(vnode: any) {
 	const instance = {
@@ -14,7 +16,7 @@ export function createComponentInstance(vnode: any) {
 
 export function setupComponent(instance: any) {
 	// 初始化组件
-	// initProps(instance)
+	initProps(instance, instance.vnode.props)
 	// initSlots(instance)
 
 	// 处理组件的setup
@@ -33,7 +35,7 @@ export function setupStatefulComponent(instance: any) {
 
 	if (setup) {
 		// setCurrentInstance(instance)
-		const setupResult = setup()
+		const setupResult = setup(shallowReadonly(instance.props))
 		console.log('setupResult:', setupResult)
 		// setCurrentInstance(null)
 

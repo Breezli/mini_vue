@@ -1,3 +1,4 @@
+import { isObject } from '../shared/index'
 import {
 	reactiveHandlers,
 	readonlyHandlers,
@@ -10,6 +11,18 @@ export const enum ReactiveFlags {
 }
 
 function createActiveEffect(raw: any, baseHanders) {
+	// 1.判断是否是对象
+	if (!isObject(raw)) {
+		console.warn(`target ${raw} 必须是一个对象`)
+		return raw
+	}
+	
+	// 2.如果已经是代理对象，不需要再次代理
+	if (raw[ReactiveFlags.IS_REACTIVE] || raw[ReactiveFlags.IS_READONLY]) {
+		return raw		
+	}
+
+	// 3.创建代理对象
 	return new Proxy(raw, baseHanders)
 }
 
