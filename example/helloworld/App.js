@@ -23,8 +23,8 @@ export const App = {
 			}, // 标签属性,可以是一个对象或数组.
 			// 'hi,' + this.msg // 子节点,可以是字符串、数字、数组或其他虚拟 DOM 节点.
 			// 'hi, mini-vue' //string类型
-			[h('p', { class: 'red' }, 'hi'), h('p', { class: 'blue' }, 'mini-vue')]// 数组类型
-			// [h('div', {}, 'hi' + this.msg), h(Foo, { count: 1 })] // 数组类型
+			// [h('p', { class: 'red' }, 'hi'), h('p', { class: 'blue' }, 'mini-vue')]// 数组类型
+			[h('div', {}, 'hi' + this.msg), h(Foo, { count: 1 })] // 数组类型
 		)
 	},
 	setup() {

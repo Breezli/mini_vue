@@ -1,3 +1,5 @@
+import { shallowReadonly } from "../reactivity/reactive";
+
 export function initProps(instance: any, rawProps: any) {
 	// const props: any = {}
 	// const attrs: any = {}
@@ -10,5 +12,5 @@ export function initProps(instance: any, rawProps: any) {
 	// 		props[key] = val
 	// 	}
 	// }
-    instance.props = rawProps || {}
+    instance.props = shallowReadonly(rawProps || {});
 }

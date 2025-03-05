@@ -3036,7 +3036,7 @@ for (const key in props) {
 }
 ```
 
-### 实现props逻辑
+### 实现props逻辑（这个有问题啊最后复盘回来看，搞一个小时了都）
 
 #### 新建测试
 
@@ -3207,6 +3207,126 @@ function createActiveEffect(raw: any, baseHanders) {
 	return new Proxy(raw, baseHanders)
 }
 ```
+
+### 实现emit功能
+
+#### 新建测试
+
+example \ componentEmit \ App.js
+
+```ts
+import { h } from '../../lib/guide-mini-vue.esm.js'
+import { Foo } from './Foo.js'
+
+export const App = {
+	name: 'App',
+	render() {
+		return h('div', {}, [
+			h('div', {}, 'App'),
+			h(Foo, {
+				onAdd() {
+					console.log('onAdd')
+				},
+			}),
+		])
+	},
+	setup() {
+		return {}
+	},
+}
+```
+
+example \ componentEmit \ Foo.js
+
+```ts
+import { h } from '../../lib/guide-mini-vue.esm.js'
+
+export const Foo = {
+	setup(props, { emit }) {
+		const emitAdd = () => {
+			console.log('emitAdd')
+			emit('add')
+		}
+
+		return {
+			emitAdd,
+		}
+	},
+	render() {
+		const btn = h('button', { onClick: this.emitAdd }, 'emitAdd')
+
+		const foo = h('p', {}, 'foo')
+		return h('div', {}, [foo, btn])
+	},
+}
+```
+
+#### 逻辑实现
+
+修改 setupStatefulComponent 逻辑
+
+```ts
+export function setupStatefulComponent(instance: any) {
+    const Component = instance.type // 先拿到组件
+    instance.proxy = new Proxy({ _: instance }, PublicInstanceProxyHandlers) // 创建代理对象
+
+    const { setup } = Component // 解构出setup
+
+    if (setup) {
+        const setupResult = setup(shallowReadonly(instance.props),{
+            emit:instance.emit,
+        })
+        handleSetupResult(instance, setupResult)
+    } else {
+        finishComponentSetup(instance)
+    }
+}
+```
+
+修改 setupStatefulComponent 逻辑
+
+```ts
+export function createComponentInstance(vnode: any) {
+	const instance = {
+		vnode,
+		type: vnode.type,
+		props: vnode.props,
+		slots: vnode.slots,
+		proxy: null, // 代理对象
+		emit: () => {}, // 事件
+	}
+	instance.emit = emit as any
+	return instance
+}
+```
+
+添加 componentEmit.ts 文件
+
+```ts
+export function emit(instance, event, ...args) {
+    const { props } = instance;
+    const handler = props[`on${event}`];
+    handler && handler(...args);
+}
+```
+
+
+
+
+
+### 实现slots功能
+
+#### 新建测试
+
+#### 逻辑实现
+
+
+
+
+
+
+
+
 
 
 
