@@ -1,3 +1,6 @@
+export * from "./ShapeFlags";
+export * from "./toDisplayString";
+
 export const isObject = (val) => {
   return val !== null && typeof val === "object";
 };

@@ -1,7 +1,11 @@
-import { effect } from "../reactivity/effect";
 import { ShapeFlags } from "../shared/ShapeFlags";
-import { createComponentInstance, setupComponent } from "./component";
+import { createComponentInstance } from "./component";
+import { queueJob } from "./scheduler";
+import { effect } from "../reactivity/effect";
+import { setupComponent } from "./component";
+import { Fragment, normalizeVNode, Text } from "./vnode";
 import { shouldUpdateComponent } from "./componentRenderUtils";
+import { createAppAPI } from "./createApp";
 
 export function createRenderer(options) {
   const {

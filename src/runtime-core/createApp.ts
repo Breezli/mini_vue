@@ -1,19 +1,17 @@
-import { render } from './renderer'
-import { createVNode } from './vnode'
+import { createVNode } from "./vnode";
 
-export function createApp(rootComponent: any) {
-	console.log('rootComponent:', rootComponent)
-	// 传入根组件
-	return {
-		mount(rootContainer: any) {
-			console.log('rootContainer:', rootContainer)
-			// 挂载回根容器
-			// 先把根组件转换成虚拟节点vnode
-			// 之后所有的操作都会基于vnode做处理
-			const vnode = createVNode(rootComponent)
-			console.log('vnode:', vnode)
+export function createAppAPI(render) {
+  return function createApp(rootComponent) {
+    const app = {
+      _component: rootComponent,
+      mount(rootContainer) {
+        console.log("基于根组件创建 vnode");
+        const vnode = createVNode(rootComponent);
+        console.log("调用 render，基于 vnode 进行开箱");
+        render(vnode, rootContainer);
+      },
+    };
 
-			render(vnode, rootContainer)
-		},
-	}
+    return app;
+  };
 }

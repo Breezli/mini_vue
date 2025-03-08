@@ -4,7 +4,6 @@ import { emit } from "./componentEmit";
 import { PublicInstanceProxyHandlers } from "./componentPublicInstance";
 import { shallowReadonly } from "../reactivity/reactive";
 import { proxyRefs } from "../reactivity/ref";
-
 export function createComponentInstance(vnode, parent) {
   const instance = {
     type: vnode.type,
